@@ -11,28 +11,40 @@ export function buildReceiptFlexMessage(
     const liffEditUrl = process.env.LIFF_EDIT_URL ?? 'https://liff.line.me/your-liff-id';
 
     // Build item rows
-    const itemRows: messagingApi.FlexComponent[] = data.items.map((item) => ({
-        type: 'box',
-        layout: 'horizontal',
-        contents: [
-            {
-                type: 'text',
-                text: item.name,
-                size: 'sm',
-                color: '#555555',
-                flex: 5,
-                wrap: true,
-            },
-            {
-                type: 'text',
-                text: `฿${item.price.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-                size: 'sm',
-                color: '#111111',
-                align: 'end',
-                flex: 2,
-            },
-        ],
-    }));
+    const itemRows: messagingApi.FlexComponent[] = data.items.map((item) => {
+        const qty = item.quantity ?? 1;
+        const subtotal = qty * item.price;
+        return {
+            type: 'box',
+            layout: 'horizontal',
+            contents: [
+                {
+                    type: 'text',
+                    text: item.name,
+                    size: 'sm',
+                    color: '#555555',
+                    flex: 5,
+                    wrap: true,
+                },
+                {
+                    type: 'text',
+                    text: `${qty}`,
+                    size: 'sm',
+                    color: '#555555',
+                    align: 'center',
+                    flex: 1,
+                },
+                {
+                    type: 'text',
+                    text: `฿${subtotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                    size: 'sm',
+                    color: '#111111',
+                    align: 'end',
+                    flex: 2,
+                },
+            ],
+        } as messagingApi.FlexComponent;
+    });
 
     // Fallback if no items found
     if (itemRows.length === 0) {
@@ -115,6 +127,15 @@ export function buildReceiptFlexMessage(
                             color: '#888888',
                             weight: 'bold',
                             flex: 5,
+                        },
+                        {
+                            type: 'text',
+                            text: 'จำนวน',
+                            size: 'xs',
+                            color: '#888888',
+                            weight: 'bold',
+                            align: 'center',
+                            flex: 1,
                         },
                         {
                             type: 'text',

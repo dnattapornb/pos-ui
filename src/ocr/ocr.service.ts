@@ -63,7 +63,7 @@ JSON ต้องมี structure ดังนี้:
   "date": "วันที่ในรูปแบบ DD/MM/YYYY หรือ null ถ้าไม่พบ",
   "totalAmount": ยอดรวมเป็นตัวเลข (number ไม่ใช่ string),
   "items": [
-    { "name": "ชื่อสินค้า", "price": ราคา (number) },
+    { "name": "ชื่อสินค้า", "quantity": จำนวน (number), "price": ราคาต่อหน่วย (number) },
     ...
   ]
 }
@@ -73,7 +73,8 @@ JSON ต้องมี structure ดังนี้:
 - date: หาวันที่จากรูปแบบ DD/MM/YYYY, DD-MM-YYYY, หรือรูปแบบที่คล้ายกัน ถ้าไม่พบให้ใส่ null
 - totalAmount: ยอดรวมสุทธิ ไม่ใช่ subtotal ควรเป็นตัวเลขที่ใหญ่ที่สุดใกล้คำว่า Total/รวม/ยอด
 - items: รายการสินค้าที่ซื้อ ไม่รวม tax, vat, ส่วนลด, บริการ
-- price ต้องเป็น number เท่านั้น (ไม่ต้องมีเครื่องหมาย ฿ หรือ ,)
+- quantity: จำนวนชิ้น/แก้ว/หน่วย ของสินค้านั้น ถ้าไม่ระบุให้ใส่ 1
+- price ต้องเป็น number ราคาต่อหน่วย (ไม่ต้องมีเครื่องหมาย ฿ หรือ ,)
 
 ข้อความจากใบเสร็จ:
 ${rawText}`;
@@ -107,6 +108,7 @@ ${rawText}`;
             items: Array.isArray(parsed.items)
                 ? parsed.items.map((item) => ({
                     name: String(item.name ?? ''),
+                    quantity: Number(item.quantity ?? 1),
                     price: Number(item.price ?? 0),
                 }))
                 : [],
