@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  mongo:
+    image: mongo:7.0.6
+    container_name: mongo-db
+    restart: always
+    environment:
+      # กำหนด Username / Password ตรงนี้ได้เลยสำหรับใช้รันในเครื่อง
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: secretpassword
+    ports:
+      - "27018:27017"
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+# สังเกตว่า volumes ตรงนี้ต้องชิดซ้ายสุด ห้ามมีย่อหน้า
+volumes:  
+  mongo-data:    
+    driver: local

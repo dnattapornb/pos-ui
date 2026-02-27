@@ -9,6 +9,8 @@ export class OcrService {
     private readonly logger = new Logger(OcrService.name);
     private readonly visionClient: ImageAnnotatorClient;
     private readonly geminiModel: ReturnType<GoogleGenerativeAI['getGenerativeModel']>;
+    private readonly receipts = new Map<string, ReceiptData>();
+
 
     constructor(private readonly configService: ConfigService) {
         // Uses GOOGLE_APPLICATION_CREDENTIALS from environment automatically
@@ -24,6 +26,23 @@ export class OcrService {
             const genAI = new GoogleGenerativeAI(apiKey);
             this.geminiModel = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
         }
+    }
+
+    // ─────────────────────────────────────────────────────────
+    //  In-Memory Receipt Store
+    // ─────────────────────────────────────────────────────────
+    saveReceipt(id: string, data: ReceiptData): void {
+        this.receipts.set(id, data);
+        this.logger.log(`Receipt saved: ${id}`);
+    }
+
+    getReceipt(id: string): ReceiptData | undefined {
+        return this.receipts.get(id);
+    }
+
+    updateReceipt(id: string, data: ReceiptData): void {
+        this.receipts.set(id, data);
+        this.logger.log(`Receipt updated: ${id}`);
     }
 
     /**
