@@ -9,6 +9,25 @@ Naming follows `.agents/references/naming-conventions.md`: tables/columns are
 `snake_case`, primary key is `id`, foreign keys are `<table>_id`. Class
 properties are `camelCase` and mapped to columns via `@Column({ name: '...' })`.
 
+## Timezone Policy
+
+All `DATETIME` columns (including every `created_at` / `updated_at`) are **stored
+and returned as UTC**. Clients are responsible for converting to local time
+(Asia/Bangkok, +07) for display.
+
+This is enforced at two layers so the DB value and the API value never skew:
+
+- **App / driver:** TypeORM `mysql` config sets `timezone: 'Z'`
+  (`src/app.module.ts`), so the `mysql2` driver reads/writes `DATETIME` as UTC
+  without applying a local offset.
+- **MySQL server:** the container runs with `--default-time-zone=+00:00`
+  (`docker-compose.yml`), so `CURRENT_TIMESTAMP` used by `@CreateDateColumn` /
+  `@UpdateDateColumn` is always UTC regardless of host TZ. Verify with
+  `SELECT @@global.time_zone, @@session.time_zone;` → both `+00:00`.
+
+API responses serialize these columns as ISO 8601 UTC strings ending in `Z`
+(e.g. `2026-06-20T07:00:00.000Z`).
+
 ## Entity Relationship Overview
 
 ```text
