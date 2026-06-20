@@ -25,7 +25,7 @@ export class UserResponseDto {
   }
 }
 
-@Controller('users')
+@Controller()
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
@@ -39,25 +39,25 @@ export class UsersController {
     });
   }
 
-  @Get()
+  @Get('users')
   async getAllUsers() {
     const users = await this.usersService.getAllUsers();
     return users.map((u) => this.mapToResponse(u));
   }
 
-  @Get(':id')
+  @Get('user/:id')
   async getUserById(@Param('id', ParseIntPipe) id: number) {
     const user = await this.usersService.getUserById(id);
     return this.mapToResponse(user);
   }
 
-  @Post()
+  @Post('user')
   async createUser(@Body() createUserDto: CreateUserDto) {
     const user = await this.usersService.createUser(createUserDto);
     return this.mapToResponse(user);
   }
 
-  @Put(':id')
+  @Put('user/:id')
   async updateUser(
     @Param('id', ParseIntPipe) id: number,
     @Body() updateUserDto: UpdateUserDto,
