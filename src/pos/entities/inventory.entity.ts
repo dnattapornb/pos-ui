@@ -3,13 +3,13 @@ import { Product } from './product.entity';
 
 @Entity()
 export class Inventory {
-  @PrimaryColumn()
+  @PrimaryColumn({ name: 'product_id' })
   productId: number;
 
   @OneToOne(() => Product, (product) => product.inventory, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'productId' })
+  @JoinColumn({ name: 'product_id' })
   product: Product;
 
-  @Column({ type: 'int', default: 0 })
+  @Column({ name: 'qty_in_base_unit', type: 'int', default: 0 })
   qtyInBaseUnit: number;
 }

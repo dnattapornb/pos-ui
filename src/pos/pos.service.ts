@@ -7,6 +7,7 @@ import { Inventory } from './entities/inventory.entity';
 import { InventoryTransaction, TransactionType } from './entities/inventory-transaction.entity';
 import { ReceiveGoodsDto, CheckoutDto } from './dto/pos.dto';
 import { v4 as uuidv4 } from 'uuid';
+import { RetailUnit } from './enums/unit.enum';
 
 @Injectable()
 export class PosService {
@@ -27,53 +28,56 @@ export class PosService {
   }
 
   async seedProducts() {
-    // Check if products already exist
-    const count = await this.productRepo.count();
-    if (count > 0) {
-      return { message: 'Products already seeded' };
-    }
-
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
+
+    // Wipe tables before seeding
+    await queryRunner.query('SET FOREIGN_KEY_CHECKS = 0;');
+    await queryRunner.query('TRUNCATE TABLE product_unit;');
+    await queryRunner.query('TRUNCATE TABLE inventory_transaction;');
+    await queryRunner.query('TRUNCATE TABLE inventory;');
+    await queryRunner.query('TRUNCATE TABLE product;');
+    await queryRunner.query('SET FOREIGN_KEY_CHECKS = 1;');
+
     await queryRunner.startTransaction();
 
     try {
-      // Product 1: Coke (Bottle, Pack, Crate)
-      const p1 = this.productRepo.create({ sku: 'SKU-001', name: 'น้ำอัดลม 325 มล.', baseUnitName: 'ขวด', costPrice: 12 });
+      // Product 1: Coke (Bottle, Pack, Carton)
+      const p1 = this.productRepo.create({ sku: 'SKU-001', name: 'น้ำอัดลม 325 มล.', baseUnitName: RetailUnit.BOTTLE, costPrice: 12 });
       await queryRunner.manager.save(p1);
-      await queryRunner.manager.save(this.unitRepo.create({ product: p1, barcode: '8850001', unitName: 'ขวด', multiplier: 1, retailPrice: 15, wholesalePrice: 14 }));
-      await queryRunner.manager.save(this.unitRepo.create({ product: p1, barcode: '8850002', unitName: 'แพ็ค', multiplier: 6, retailPrice: 85, wholesalePrice: 80 }));
-      await queryRunner.manager.save(this.unitRepo.create({ product: p1, barcode: '8850003', unitName: 'ลัง', multiplier: 24, retailPrice: 330, wholesalePrice: 310 }));
-      await queryRunner.manager.save(this.inventoryRepo.create({ product: p1, qtyInBaseUnit: 48 })); // 2 crates
+      await queryRunner.manager.save(this.unitRepo.create({ product: p1, barcode: '8850001', unitName: RetailUnit.BOTTLE, multiplier: 1, retailPrice: 15, wholesalePrice: 14 }));
+      await queryRunner.manager.save(this.unitRepo.create({ product: p1, barcode: '8850002', unitName: RetailUnit.PACK, multiplier: 6, retailPrice: 85, wholesalePrice: 80 }));
+      await queryRunner.manager.save(this.unitRepo.create({ product: p1, barcode: '8850003', unitName: RetailUnit.CARTON, multiplier: 24, retailPrice: 330, wholesalePrice: 310 }));
+      await queryRunner.manager.save(this.inventoryRepo.create({ product: p1, qtyInBaseUnit: 48 })); // 2 cartons
 
-      // Product 2: Instant Noodle (Sachet, Pack, Box)
-      const p2 = this.productRepo.create({ sku: 'SKU-002', name: 'บะหมี่กึ่งสำเร็จรูป รสหมูสับ', baseUnitName: 'ซอง', costPrice: 5 });
+      // Product 2: Instant Noodle (Sachet, Pack, Carton) -> 1 Carton = 4 Packs = 40 Sachets
+      const p2 = this.productRepo.create({ sku: 'SKU-002', name: 'บะหมี่กึ่งสำเร็จรูป รสหมูสับ', baseUnitName: RetailUnit.SACHET, costPrice: 5 });
       await queryRunner.manager.save(p2);
-      await queryRunner.manager.save(this.unitRepo.create({ product: p2, barcode: '8850004', unitName: 'ซอง', multiplier: 1, retailPrice: 7, wholesalePrice: 6 }));
-      await queryRunner.manager.save(this.unitRepo.create({ product: p2, barcode: '8850005', unitName: 'แพ็ค', multiplier: 6, retailPrice: 40, wholesalePrice: 35 }));
-      await queryRunner.manager.save(this.unitRepo.create({ product: p2, barcode: '8850006', unitName: 'กล่อง', multiplier: 30, retailPrice: 195, wholesalePrice: 180 }));
-      await queryRunner.manager.save(this.inventoryRepo.create({ product: p2, qtyInBaseUnit: 60 })); // 2 boxes
+      await queryRunner.manager.save(this.unitRepo.create({ product: p2, barcode: '8850004', unitName: RetailUnit.SACHET, multiplier: 1, retailPrice: 7, wholesalePrice: 6 }));
+      await queryRunner.manager.save(this.unitRepo.create({ product: p2, barcode: '8850005', unitName: RetailUnit.PACK, multiplier: 10, retailPrice: 65, wholesalePrice: 60 }));
+      await queryRunner.manager.save(this.unitRepo.create({ product: p2, barcode: '8850006', unitName: RetailUnit.CARTON, multiplier: 40, retailPrice: 250, wholesalePrice: 235 }));
+      await queryRunner.manager.save(this.inventoryRepo.create({ product: p2, qtyInBaseUnit: 80 })); // 2 cartons
 
-      // Product 3: UHT Milk (Carton, Pack, Crate)
-      const p3 = this.productRepo.create({ sku: 'SKU-003', name: 'นม UHT รสจืด 225 มล.', baseUnitName: 'กล่อง', costPrice: 9 });
+      // Product 3: UHT Milk (Box, Pack, Carton)
+      const p3 = this.productRepo.create({ sku: 'SKU-003', name: 'นม UHT รสจืด 225 มล.', baseUnitName: RetailUnit.BOX, costPrice: 9 });
       await queryRunner.manager.save(p3);
-      await queryRunner.manager.save(this.unitRepo.create({ product: p3, barcode: '8850007', unitName: 'กล่อง', multiplier: 1, retailPrice: 12, wholesalePrice: 11 }));
-      await queryRunner.manager.save(this.unitRepo.create({ product: p3, barcode: '8850008', unitName: 'แพ็ค', multiplier: 4, retailPrice: 46, wholesalePrice: 42 }));
-      await queryRunner.manager.save(this.unitRepo.create({ product: p3, barcode: '8850009', unitName: 'ลัง', multiplier: 36, retailPrice: 400, wholesalePrice: 380 }));
+      await queryRunner.manager.save(this.unitRepo.create({ product: p3, barcode: '8850007', unitName: RetailUnit.BOX, multiplier: 1, retailPrice: 12, wholesalePrice: 11 }));
+      await queryRunner.manager.save(this.unitRepo.create({ product: p3, barcode: '8850008', unitName: RetailUnit.PACK, multiplier: 4, retailPrice: 46, wholesalePrice: 42 }));
+      await queryRunner.manager.save(this.unitRepo.create({ product: p3, barcode: '8850009', unitName: RetailUnit.CARTON, multiplier: 36, retailPrice: 400, wholesalePrice: 380 }));
       await queryRunner.manager.save(this.inventoryRepo.create({ product: p3, qtyInBaseUnit: 0 }));
 
       // Product 4: Drinking Water (Bottle, Pack)
-      const p4 = this.productRepo.create({ sku: 'SKU-004', name: 'น้ำดื่ม 600 มล.', baseUnitName: 'ขวด', costPrice: 4 });
+      const p4 = this.productRepo.create({ sku: 'SKU-004', name: 'น้ำดื่ม 600 มล.', baseUnitName: RetailUnit.BOTTLE, costPrice: 4 });
       await queryRunner.manager.save(p4);
-      await queryRunner.manager.save(this.unitRepo.create({ product: p4, barcode: '8850010', unitName: 'ขวด', multiplier: 1, retailPrice: 7, wholesalePrice: 6 }));
-      await queryRunner.manager.save(this.unitRepo.create({ product: p4, barcode: '8850011', unitName: 'แพ็ค', multiplier: 12, retailPrice: 60, wholesalePrice: 55 }));
+      await queryRunner.manager.save(this.unitRepo.create({ product: p4, barcode: '8850010', unitName: RetailUnit.BOTTLE, multiplier: 1, retailPrice: 7, wholesalePrice: 6 }));
+      await queryRunner.manager.save(this.unitRepo.create({ product: p4, barcode: '8850011', unitName: RetailUnit.PACK, multiplier: 12, retailPrice: 60, wholesalePrice: 55 }));
       await queryRunner.manager.save(this.inventoryRepo.create({ product: p4, qtyInBaseUnit: 120 })); // 10 packs
 
       // Product 5: Energy Drink (Bottle, Pack)
-      const p5 = this.productRepo.create({ sku: 'SKU-005', name: 'เครื่องดื่มชูกำลัง', baseUnitName: 'ขวด', costPrice: 8 });
+      const p5 = this.productRepo.create({ sku: 'SKU-005', name: 'เครื่องดื่มชูกำลัง', baseUnitName: RetailUnit.BOTTLE, costPrice: 8 });
       await queryRunner.manager.save(p5);
-      await queryRunner.manager.save(this.unitRepo.create({ product: p5, barcode: '8850012', unitName: 'ขวด', multiplier: 1, retailPrice: 10, wholesalePrice: 9 }));
-      await queryRunner.manager.save(this.unitRepo.create({ product: p5, barcode: '8850013', unitName: 'แพ็ค', multiplier: 10, retailPrice: 95, wholesalePrice: 85 }));
+      await queryRunner.manager.save(this.unitRepo.create({ product: p5, barcode: '8850012', unitName: RetailUnit.BOTTLE, multiplier: 1, retailPrice: 10, wholesalePrice: 9 }));
+      await queryRunner.manager.save(this.unitRepo.create({ product: p5, barcode: '8850013', unitName: RetailUnit.PACK, multiplier: 10, retailPrice: 95, wholesalePrice: 85 }));
       await queryRunner.manager.save(this.inventoryRepo.create({ product: p5, qtyInBaseUnit: 50 })); // 5 packs
 
       await queryRunner.commitTransaction();

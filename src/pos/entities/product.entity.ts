@@ -1,4 +1,5 @@
 import { Entity, Column, PrimaryGeneratedColumn, OneToMany, OneToOne } from 'typeorm';
+import { RetailUnit } from '../enums/unit.enum';
 import { ProductUnit } from './product-unit.entity';
 import { Inventory } from './inventory.entity';
 
@@ -13,10 +14,10 @@ export class Product {
   @Column()
   name: string;
 
-  @Column()
-  baseUnitName: string;
+  @Column({ name: 'base_unit_name', type: 'enum', enum: RetailUnit })
+  baseUnitName: RetailUnit;
 
-  @Column('decimal', { precision: 10, scale: 2, default: 0 })
+  @Column('decimal', { name: 'cost_price', precision: 10, scale: 2, default: 0 })
   costPrice: number;
 
   @OneToMany(() => ProductUnit, (unit) => unit.product, { cascade: true })

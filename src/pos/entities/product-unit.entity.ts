@@ -1,5 +1,6 @@
-import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, JoinColumn, Index } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, JoinColumn } from 'typeorm';
 import { Product } from './product.entity';
+import { RetailUnit } from '../enums/unit.enum';
 
 @Entity()
 export class ProductUnit {
@@ -10,19 +11,18 @@ export class ProductUnit {
   @JoinColumn({ name: 'product_id' })
   product: Product;
 
-  @Index()
   @Column({ unique: true })
   barcode: string;
 
-  @Column()
-  unitName: string;
+  @Column({ name: 'unit_name', type: 'enum', enum: RetailUnit })
+  unitName: RetailUnit;
 
   @Column()
   multiplier: number;
 
-  @Column('decimal', { precision: 10, scale: 2 })
+  @Column('decimal', { name: 'retail_price', precision: 10, scale: 2 })
   retailPrice: number;
 
-  @Column('decimal', { precision: 10, scale: 2 })
+  @Column('decimal', { name: 'wholesale_price', precision: 10, scale: 2 })
   wholesalePrice: number;
 }

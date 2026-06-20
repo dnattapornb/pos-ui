@@ -21,9 +21,9 @@ export class InventoryTransaction {
   @Column({ type: 'int' })
   qty: number;
 
-  @Column({ nullable: true })
+  @Column({ name: 'reference_id', nullable: true })
   referenceId: string;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 }
