@@ -9,8 +9,10 @@ import {
   InventoryTransaction,
   TransactionType,
 } from './entities/inventory-transaction.entity';
+import { Supplier } from './entities/supplier.entity';
+import { PurchaseOrder } from './entities/purchase-order.entity';
+import { PurchaseOrderStatus } from './enums/purchase-order-status.enum';
 import {
-  ReceiveGoodsDto,
   CheckoutDto,
   CreateProductDto,
   UpdateProductDto,
@@ -18,8 +20,10 @@ import {
   UpdateProductUnitDto,
   CreateCategoryDto,
   UpdateCategoryDto,
+  CreateSupplierDto,
+  UpdateSupplierDto,
+  CreatePurchaseOrderDto,
 } from './dto/pos.dto';
-import { v4 as uuidv4 } from 'uuid';
 import { UnitName } from './enums/unit.enum';
 
 @Injectable()
@@ -35,6 +39,10 @@ export class PosService {
     private readonly inventoryRepo: Repository<Inventory>,
     @InjectRepository(Category)
     private readonly categoryRepo: Repository<Category>,
+    @InjectRepository(Supplier)
+    private readonly supplierRepo: Repository<Supplier>,
+    @InjectRepository(PurchaseOrder)
+    private readonly poRepo: Repository<PurchaseOrder>,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -58,7 +66,9 @@ export class PosService {
       return category;
     } catch (err) {
       this.logger.error(`Create category failed: ${err}`);
-      throw new BadRequestException('Failed to create category (name might already exist)');
+      throw new BadRequestException(
+        'Failed to create category (name might already exist)',
+      );
     }
   }
 
@@ -78,9 +88,9 @@ export class PosService {
   }
 
   async deleteCategory(id: number) {
-    const category = await this.categoryRepo.findOne({ 
+    const category = await this.categoryRepo.findOne({
       where: { id },
-      relations: { products: true }
+      relations: { products: true },
     });
     if (!category) {
       throw new BadRequestException('Category not found');
@@ -558,57 +568,138 @@ export class PosService {
     }
   }
 
-  async receiveGoods(dto: ReceiveGoodsDto) {
-    const unit = await this.unitRepo.findOne({
-      where: { barcode: dto.barcode },
-      relations: { product: true },
-    });
+  async getAllSuppliers() {
+    return this.supplierRepo.find();
+  }
 
-    if (!unit) {
-      throw new BadRequestException('Barcode not found');
+  async getSupplierById(id: number) {
+    const supplier = await this.supplierRepo.findOne({ where: { id } });
+    if (!supplier) {
+      throw new BadRequestException('Supplier not found');
     }
+    return supplier;
+  }
 
-    const qtyInBase = dto.qty * unit.multiplier;
+  async createSupplier(dto: CreateSupplierDto) {
+    try {
+      const supplier = this.supplierRepo.create(dto);
+      await this.supplierRepo.save(supplier);
+      this.logger.log(`Created supplier ${supplier.id}`);
+      return supplier;
+    } catch (err) {
+      this.logger.error(`Create supplier failed: ${err}`);
+      throw new BadRequestException('Failed to create supplier');
+    }
+  }
 
+  async updateSupplier(id: number, dto: UpdateSupplierDto) {
+    const supplier = await this.getSupplierById(id);
+    if (dto.name) supplier.name = dto.name;
+    if (dto.contactInfo !== undefined) supplier.contactInfo = dto.contactInfo;
+
+    try {
+      await this.supplierRepo.save(supplier);
+      this.logger.log(`Updated supplier ${id}`);
+      return supplier;
+    } catch (err) {
+      this.logger.error(`Update supplier failed: ${err}`);
+      throw new BadRequestException('Failed to update supplier');
+    }
+  }
+
+  async deleteSupplier(id: number) {
+    const supplier = await this.getSupplierById(id);
+    await this.supplierRepo.remove(supplier);
+    this.logger.log(`Deleted supplier ${id}`);
+    return { message: `Supplier ${id} has been deleted` };
+  }
+
+  async createPurchaseOrder(dto: CreatePurchaseOrderDto) {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
     try {
-      // Create Transaction
-      const transaction = new InventoryTransaction();
-      transaction.product = unit.product;
-      transaction.type = TransactionType.IN;
-      transaction.qty = qtyInBase;
-      transaction.referenceId = `RCV-${Date.now()}`;
-      await queryRunner.manager.save(transaction);
-
-      // Update Inventory with locking
-      const inventory = await queryRunner.manager.findOne(Inventory, {
-        where: { productId: unit.product.id },
-        lock: { mode: 'pessimistic_write' },
-      });
-
-      if (inventory) {
-        inventory.qtyInBaseUnit += qtyInBase;
-        await queryRunner.manager.save(inventory);
-      } else {
-        const newInv = new Inventory();
-        newInv.product = unit.product;
-        newInv.qtyInBaseUnit = qtyInBase;
-        await queryRunner.manager.save(newInv);
+      let supplier = null;
+      if (dto.supplierId) {
+        supplier = await queryRunner.manager.findOne(Supplier, {
+          where: { id: dto.supplierId },
+        });
+        if (!supplier) {
+          throw new BadRequestException('Supplier not found');
+        }
       }
 
+      // 1. Create PurchaseOrder
+      const poNo = `PO-${Date.now()}`;
+      let totalAmount = 0;
+
+      const purchaseOrder = new PurchaseOrder();
+      purchaseOrder.poNo = poNo;
+      if (supplier) {
+        purchaseOrder.supplier = supplier;
+      }
+      purchaseOrder.status = PurchaseOrderStatus.COMPLETED;
+      await queryRunner.manager.save(purchaseOrder);
+
+      // 2. Process items
+      for (const item of dto.items) {
+        const unit = await queryRunner.manager.findOne(ProductUnit, {
+          where: { barcode: item.barcode },
+          relations: { product: true },
+        });
+
+        if (!unit) {
+          throw new BadRequestException(`Barcode ${item.barcode} not found`);
+        }
+
+        const qtyInBase = item.qty * unit.multiplier;
+        const itemCost =
+          item.costPrice !== undefined
+            ? item.costPrice
+            : unit.product.costPrice;
+        totalAmount += Number(itemCost) * item.qty;
+
+        // Create Transaction
+        const transaction = new InventoryTransaction();
+        transaction.product = unit.product;
+        transaction.type = TransactionType.IN;
+        transaction.qty = qtyInBase;
+        transaction.referenceId = poNo;
+        await queryRunner.manager.save(transaction);
+
+        // Update Inventory with locking
+        const inventory = await queryRunner.manager.findOne(Inventory, {
+          where: { productId: unit.product.id },
+          lock: { mode: 'pessimistic_write' },
+        });
+
+        if (inventory) {
+          inventory.qtyInBaseUnit += qtyInBase;
+          await queryRunner.manager.save(inventory);
+        } else {
+          const newInv = new Inventory();
+          newInv.product = unit.product;
+          newInv.qtyInBaseUnit = qtyInBase;
+          await queryRunner.manager.save(newInv);
+        }
+      }
+
+      purchaseOrder.totalAmount = totalAmount;
+      await queryRunner.manager.save(purchaseOrder);
+
       await queryRunner.commitTransaction();
+      this.logger.log(`Created purchase order ${poNo}`);
       return {
-        message: 'Goods received successfully',
-        qtyAdded: qtyInBase,
-        unitName: unit.product.baseUnitName,
+        message: 'Purchase order created successfully',
+        poNo,
       };
     } catch (err) {
       await queryRunner.rollbackTransaction();
-      this.logger.error(`Receive goods failed: ${err}`);
-      throw new BadRequestException('Failed to receive goods');
+      this.logger.error(`Create purchase order failed: ${err}`);
+      throw new BadRequestException(
+        (err as Error).message || 'Failed to create purchase order',
+      );
     } finally {
       await queryRunner.release();
     }

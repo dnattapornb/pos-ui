@@ -31,10 +31,10 @@
 
 ## R2.3 — Supplier & Purchase Order API
 
-- [ ] สร้าง DTO `CreateSupplierDto`, `UpdateSupplierDto`, `CreatePurchaseOrderDto` (ดัดแปลงจาก `ReceiveGoodsDto` เดิม)
-- [ ] เพิ่ม methods ใน `PosService` สำหรับ CRUD `Supplier`
-- [ ] สร้าง endpoint `/pos/purchase-order` เพื่อรองรับการสั่งซื้อเข้าคลัง โดย Logic จะสร้างเอกสาร `PurchaseOrder` ก่อน และเชื่อมไปยังการสร้าง Inventory Transaction `IN` และบวกสต็อก
-- [ ] เพิ่ม/ปรับปรุง Unit Test ที่เกี่ยวข้องใน `pos.service.spec.ts`
+- [x] สร้าง DTO `CreateSupplierDto`, `UpdateSupplierDto`, `CreatePurchaseOrderDto` (ดัดแปลงจาก `ReceiveGoodsDto` เดิม)
+- [x] เพิ่ม methods ใน `PosService` สำหรับ CRUD `Supplier`
+- [x] สร้าง endpoint `/pos/purchase-order` เพื่อรองรับการสั่งซื้อเข้าคลัง โดย Logic จะสร้างเอกสาร `PurchaseOrder` ก่อน และเชื่อมไปยังการสร้าง Inventory Transaction `IN` และบวกสต็อก
+- [x] เพิ่ม/ปรับปรุง Unit Test ที่เกี่ยวข้องใน `pos.service.spec.ts`
 
 ## R2.4 — Order API & Checkout Refactor
 

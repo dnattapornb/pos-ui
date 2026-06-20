@@ -149,7 +149,28 @@ export class UpdateProductDto {
   published?: boolean;
 }
 
-export class ReceiveGoodsDto {
+export class CreateSupplierDto {
+  @IsString()
+  @IsNotEmpty()
+  name: string;
+
+  @IsOptional()
+  @IsString()
+  contactInfo?: string;
+}
+
+export class UpdateSupplierDto {
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  contactInfo?: string;
+}
+
+export class PurchaseOrderItemDto {
   @IsString()
   @IsNotEmpty()
   barcode: string;
@@ -157,6 +178,24 @@ export class ReceiveGoodsDto {
   @IsNumber()
   @IsPositive()
   qty: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  costPrice?: number;
+}
+
+export class CreatePurchaseOrderDto {
+  @IsOptional()
+  @IsNumber()
+  @IsPositive()
+  supplierId?: number;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => PurchaseOrderItemDto)
+  items: PurchaseOrderItemDto[];
 }
 
 export class CheckoutItemDto {

@@ -5,6 +5,8 @@ import { Product } from '../../../src/pos/entities/product.entity';
 import { ProductUnit } from '../../../src/pos/entities/product-unit.entity';
 import { Inventory } from '../../../src/pos/entities/inventory.entity';
 import { Category } from '../../../src/pos/entities/category.entity';
+import { Supplier } from '../../../src/pos/entities/supplier.entity';
+import { PurchaseOrder } from '../../../src/pos/entities/purchase-order.entity';
 import { DataSource } from 'typeorm';
 import { UnitName } from '../../../src/pos/enums/unit.enum';
 
@@ -27,7 +29,20 @@ describe('PosService', () => {
 
   let unitRepo: { create: jest.Mock; findOne: jest.Mock; save: jest.Mock };
   let productRepo: { findOne: jest.Mock };
-  let categoryRepo: { find: jest.Mock; findOne: jest.Mock; create: jest.Mock; save: jest.Mock; remove: jest.Mock };
+  let categoryRepo: {
+    find: jest.Mock;
+    findOne: jest.Mock;
+    create: jest.Mock;
+    save: jest.Mock;
+    remove: jest.Mock;
+  };
+  let supplierRepo: {
+    find: jest.Mock;
+    findOne: jest.Mock;
+    create: jest.Mock;
+    save: jest.Mock;
+    remove: jest.Mock;
+  };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -67,9 +82,31 @@ describe('PosService', () => {
           useValue: {
             find: jest.fn().mockResolvedValue([]),
             findOne: jest.fn(),
-            create: jest.fn().mockImplementation((dto: Partial<Category>) => dto),
+            create: jest
+              .fn()
+              .mockImplementation((dto: Partial<Category>) => dto),
             save: jest.fn(),
             remove: jest.fn(),
+          },
+        },
+        {
+          provide: getRepositoryToken(Supplier),
+          useValue: {
+            find: jest.fn().mockResolvedValue([]),
+            findOne: jest.fn(),
+            create: jest
+              .fn()
+              .mockImplementation((dto: Partial<Supplier>) => dto),
+            save: jest.fn(),
+            remove: jest.fn(),
+          },
+        },
+        {
+          provide: getRepositoryToken(PurchaseOrder),
+          useValue: {
+            find: jest.fn().mockResolvedValue([]),
+            findOne: jest.fn(),
+            save: jest.fn(),
           },
         },
         {
@@ -85,6 +122,7 @@ describe('PosService', () => {
     unitRepo = module.get(getRepositoryToken(ProductUnit));
     productRepo = module.get(getRepositoryToken(Product));
     categoryRepo = module.get(getRepositoryToken(Category));
+    supplierRepo = module.get(getRepositoryToken(Supplier));
   });
 
   afterEach(() => {
@@ -348,12 +386,17 @@ describe('PosService', () => {
 
     it('getCategoryById should throw if not found', async () => {
       categoryRepo.findOne.mockResolvedValueOnce(null);
-      await expect(service.getCategoryById(99)).rejects.toThrow('Category not found');
+      await expect(service.getCategoryById(99)).rejects.toThrow(
+        'Category not found',
+      );
     });
 
     it('createCategory should create and return category', async () => {
       categoryRepo.create.mockReturnValue({ name: 'Cat' });
-      categoryRepo.save.mockImplementation(async (c) => { c.id = 1; return c; });
+      categoryRepo.save.mockImplementation((obj: any) => {
+        obj.id = 1;
+        return Promise.resolve(obj);
+      });
       const res = await service.createCategory({ name: 'Cat' });
       expect(res).toEqual({ id: 1, name: 'Cat' });
     });
@@ -376,7 +419,92 @@ describe('PosService', () => {
     it('deleteCategory should throw if category has products', async () => {
       const category = { id: 1, name: 'Cat', products: [{ id: 10 }] };
       categoryRepo.findOne.mockResolvedValueOnce(category);
-      await expect(service.deleteCategory(1)).rejects.toThrow('Cannot delete category with products');
+      await expect(service.deleteCategory(1)).rejects.toThrow(
+        'Cannot delete category with products',
+      );
+    });
+  });
+
+  describe('Supplier', () => {
+    it('getAllSuppliers should return array', async () => {
+      supplierRepo.find.mockResolvedValueOnce([{ id: 1, name: 'Supplier A' }]);
+      const res = await service.getAllSuppliers();
+      expect(supplierRepo.find).toHaveBeenCalled();
+      expect(res).toEqual([{ id: 1, name: 'Supplier A' }]);
+    });
+
+    it('getSupplierById should return supplier if found', async () => {
+      supplierRepo.findOne.mockResolvedValueOnce({ id: 1, name: 'Supplier A' });
+      const res = await service.getSupplierById(1);
+      expect(supplierRepo.findOne).toHaveBeenCalledWith({ where: { id: 1 } });
+      expect(res).toEqual({ id: 1, name: 'Supplier A' });
+    });
+
+    it('getSupplierById should throw if not found', async () => {
+      supplierRepo.findOne.mockResolvedValueOnce(null);
+      await expect(service.getSupplierById(99)).rejects.toThrow(
+        'Supplier not found',
+      );
+    });
+
+    it('createSupplier should create and return supplier', async () => {
+      supplierRepo.create.mockReturnValue({ name: 'Supplier A' });
+      supplierRepo.save.mockImplementation((obj: any) => {
+        obj.id = 1;
+        return Promise.resolve(obj);
+      });
+      const res = await service.createSupplier({ name: 'Supplier A' });
+      expect(res).toEqual({ id: 1, name: 'Supplier A' });
+    });
+
+    it('updateSupplier should update and return supplier', async () => {
+      supplierRepo.findOne.mockResolvedValueOnce({ id: 1, name: 'Old' });
+      const res = await service.updateSupplier(1, { name: 'New' });
+      expect(supplierRepo.save).toHaveBeenCalledWith({ id: 1, name: 'New' });
+      expect(res).toEqual({ id: 1, name: 'New' });
+    });
+
+    it('deleteSupplier should remove supplier', async () => {
+      const supplier = { id: 1, name: 'Supplier A' };
+      supplierRepo.findOne.mockResolvedValueOnce(supplier);
+      const res = await service.deleteSupplier(1);
+      expect(supplierRepo.remove).toHaveBeenCalledWith(supplier);
+      expect(res).toEqual({ message: 'Supplier 1 has been deleted' });
+    });
+  });
+
+  describe('Purchase Order', () => {
+    it('createPurchaseOrder should create PO and receive goods', async () => {
+      const dto = { items: [{ barcode: '123', qty: 2 }] };
+      const mockProduct = { id: 1, name: 'Prod', costPrice: 10 };
+      const mockUnit = {
+        id: 1,
+        barcode: '123',
+        multiplier: 2,
+        product: mockProduct,
+      };
+
+      mockQueryRunner.manager.findOne
+        .mockResolvedValueOnce(mockUnit) // for unit
+        .mockResolvedValueOnce(null); // for inventory (new)
+
+      const res = await service.createPurchaseOrder(dto);
+
+      expect(mockQueryRunner.startTransaction).toHaveBeenCalled();
+      expect(mockQueryRunner.manager.save).toHaveBeenCalled(); // saving PO, transaction, inventory, etc.
+      expect(mockQueryRunner.commitTransaction).toHaveBeenCalled();
+      expect(res.message).toEqual('Purchase order created successfully');
+      expect(res.poNo).toBeDefined();
+    });
+
+    it('createPurchaseOrder should rollback and throw on error', async () => {
+      const dto = { items: [{ barcode: '123', qty: 2 }] };
+      mockQueryRunner.manager.findOne.mockResolvedValueOnce(null); // barcode not found
+
+      await expect(service.createPurchaseOrder(dto)).rejects.toThrow(
+        'Barcode 123 not found',
+      );
+      expect(mockQueryRunner.rollbackTransaction).toHaveBeenCalled();
     });
   });
 });

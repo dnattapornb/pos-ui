@@ -4,7 +4,7 @@ import { validateSync } from 'class-validator';
 import {
   CheckoutDto,
   CreateProductDto,
-  ReceiveGoodsDto,
+  CreatePurchaseOrderDto,
   UpdateProductDto,
 } from '../../../../src/pos/dto/pos.dto';
 import { UnitName } from '../../../../src/pos/enums/unit.enum';
@@ -114,22 +114,30 @@ describe('POS DTO validation', () => {
     });
   });
 
-  describe('ReceiveGoodsDto', () => {
+  describe('CreatePurchaseOrderDto', () => {
     it('passes with a valid payload', () => {
-      const dto = plainToInstance(ReceiveGoodsDto, {
-        barcode: '8850001',
-        qty: 5,
+      const dto = plainToInstance(CreatePurchaseOrderDto, {
+        supplierId: 1,
+        items: [{ barcode: '8850001', qty: 5 }],
       });
       expect(validateSync(dto)).toHaveLength(0);
     });
 
-    it('fails when qty is not positive', () => {
-      const dto = plainToInstance(ReceiveGoodsDto, {
-        barcode: '8850001',
-        qty: 0,
+    it('fails when items array is empty', () => {
+      const dto = plainToInstance(CreatePurchaseOrderDto, {
+        supplierId: 1,
+        items: [],
       });
       const errors = validateSync(dto);
-      expect(errors.map((e) => e.property)).toContain('qty');
+      expect(errors.map((e) => e.property)).toContain('items');
+    });
+
+    it('fails when item qty is not positive', () => {
+      const dto = plainToInstance(CreatePurchaseOrderDto, {
+        items: [{ barcode: '8850001', qty: 0 }],
+      });
+      const errors = validateSync(dto);
+      expect(errors.map((e) => e.property)).toContain('items');
     });
   });
 

@@ -10,7 +10,6 @@ import {
 } from '@nestjs/common';
 import { PosService } from './pos.service';
 import {
-  ReceiveGoodsDto,
   CheckoutDto,
   CreateProductDto,
   UpdateProductDto,
@@ -18,6 +17,9 @@ import {
   UpdateProductUnitDto,
   CreateCategoryDto,
   UpdateCategoryDto,
+  CreateSupplierDto,
+  UpdateSupplierDto,
+  CreatePurchaseOrderDto,
 } from './dto/pos.dto';
 
 @Controller('pos')
@@ -103,14 +105,42 @@ export class PosController {
     return this.posService.deleteProduct(id);
   }
 
+  @Get('suppliers')
+  async getAllSuppliers() {
+    return this.posService.getAllSuppliers();
+  }
+
+  @Get('supplier/:id')
+  async getSupplierById(@Param('id', ParseIntPipe) id: number) {
+    return this.posService.getSupplierById(id);
+  }
+
+  @Post('supplier')
+  async createSupplier(@Body() dto: CreateSupplierDto) {
+    return this.posService.createSupplier(dto);
+  }
+
+  @Put('supplier/:id')
+  async updateSupplier(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateSupplierDto,
+  ) {
+    return this.posService.updateSupplier(id, dto);
+  }
+
+  @Delete('supplier/:id')
+  async deleteSupplier(@Param('id', ParseIntPipe) id: number) {
+    return this.posService.deleteSupplier(id);
+  }
+
+  @Post('purchase-order')
+  createPurchaseOrder(@Body() dto: CreatePurchaseOrderDto) {
+    return this.posService.createPurchaseOrder(dto);
+  }
+
   @Post('seed')
   seedProducts() {
     return this.posService.seedProducts();
-  }
-
-  @Post('inventory/receive')
-  receiveGoods(@Body() dto: ReceiveGoodsDto) {
-    return this.posService.receiveGoods(dto);
   }
 
   @Post('checkout')

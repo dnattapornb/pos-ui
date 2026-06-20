@@ -27,13 +27,20 @@ describe('PosController', () => {
         .fn()
         .mockResolvedValue({ message: 'Unit deleted' }),
       seedProducts: jest.fn().mockResolvedValue({ message: 'Seeded' }),
-      receiveGoods: jest.fn().mockResolvedValue({ message: 'Received' }),
+      createPurchaseOrder: jest
+        .fn()
+        .mockResolvedValue({ message: 'PO Created' }),
       checkout: jest.fn().mockResolvedValue({ message: 'Checkout' }),
       getAllCategories: jest.fn().mockResolvedValue([]),
       getCategoryById: jest.fn().mockResolvedValue({ id: 1, name: 'Cat' }),
       createCategory: jest.fn().mockResolvedValue({ id: 1, name: 'Cat' }),
       updateCategory: jest.fn().mockResolvedValue({ id: 1, name: 'Updated' }),
       deleteCategory: jest.fn().mockResolvedValue({ message: 'Deleted' }),
+      getAllSuppliers: jest.fn().mockResolvedValue([]),
+      getSupplierById: jest.fn().mockResolvedValue({ id: 1 }),
+      createSupplier: jest.fn().mockResolvedValue({ id: 1 }),
+      updateSupplier: jest.fn().mockResolvedValue({ id: 1 }),
+      deleteSupplier: jest.fn().mockResolvedValue({ message: 'Deleted' }),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -138,11 +145,11 @@ describe('PosController', () => {
     expect(res).toEqual({ message: 'Seeded' });
   });
 
-  it('should call receiveGoods', async () => {
-    const dto = { barcode: '123', qty: 1 };
-    const res = await controller.receiveGoods(dto);
-    expect(service.receiveGoods).toHaveBeenCalledWith(dto);
-    expect(res).toEqual({ message: 'Received' });
+  it('should call createPurchaseOrder', async () => {
+    const dto = { items: [{ barcode: '123', qty: 1 }] };
+    const res = await controller.createPurchaseOrder(dto);
+    expect(service.createPurchaseOrder).toHaveBeenCalledWith(dto);
+    expect(res).toEqual({ message: 'PO Created' });
   });
 
   it('should call checkout', async () => {
@@ -181,6 +188,38 @@ describe('PosController', () => {
   it('should call deleteCategory', async () => {
     const res = await controller.deleteCategory(1);
     expect(service.deleteCategory).toHaveBeenCalledWith(1);
+    expect(res).toEqual({ message: 'Deleted' });
+  });
+
+  it('should call getAllSuppliers', async () => {
+    const res = await controller.getAllSuppliers();
+    expect(service.getAllSuppliers).toHaveBeenCalled();
+    expect(res).toEqual([]);
+  });
+
+  it('should call getSupplierById', async () => {
+    const res = await controller.getSupplierById(1);
+    expect(service.getSupplierById).toHaveBeenCalledWith(1);
+    expect(res).toEqual({ id: 1 });
+  });
+
+  it('should call createSupplier', async () => {
+    const dto = { name: 'Supplier A' };
+    const res = await controller.createSupplier(dto);
+    expect(service.createSupplier).toHaveBeenCalledWith(dto);
+    expect(res).toEqual({ id: 1 });
+  });
+
+  it('should call updateSupplier', async () => {
+    const dto = { name: 'Supplier B' };
+    const res = await controller.updateSupplier(1, dto);
+    expect(service.updateSupplier).toHaveBeenCalledWith(1, dto);
+    expect(res).toEqual({ id: 1 });
+  });
+
+  it('should call deleteSupplier', async () => {
+    const res = await controller.deleteSupplier(1);
+    expect(service.deleteSupplier).toHaveBeenCalledWith(1);
     expect(res).toEqual({ message: 'Deleted' });
   });
 });

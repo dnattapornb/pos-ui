@@ -6,6 +6,8 @@ import { Product } from './entities/product.entity';
 import { ProductUnit } from './entities/product-unit.entity';
 import { Inventory } from './entities/inventory.entity';
 import { InventoryTransaction } from './entities/inventory-transaction.entity';
+import { Supplier } from './entities/supplier.entity';
+import { PurchaseOrder } from './entities/purchase-order.entity';
 
 @Module({
   imports: [
@@ -14,6 +16,8 @@ import { InventoryTransaction } from './entities/inventory-transaction.entity';
       ProductUnit,
       Inventory,
       InventoryTransaction,
+      Supplier,
+      PurchaseOrder,
     ]),
   ],
   controllers: [PosController],
