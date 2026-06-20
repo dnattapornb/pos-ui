@@ -70,7 +70,7 @@ export class LineService {
 
             // 3. Persist to MongoDB BEFORE sending Flex Message
             const savedReceipt = await this.receiptService.createReceipt(userId, receiptData);
-            const receiptId = savedReceipt.receiptId;
+            const receiptId = savedReceipt.id;
             this.logger.log(`Receipt persisted to DB: ${receiptId}`);
 
             // 4. Build Flex Message and reply

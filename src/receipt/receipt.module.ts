@@ -1,13 +1,14 @@
 import { Module, forwardRef } from '@nestjs/common';
-import { MongooseModule } from '@nestjs/mongoose';
-import { Receipt, ReceiptSchema } from './receipt.schema';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { Receipt } from './receipt.entity';
+import { ReceiptItem } from './receipt-item.entity';
 import { ReceiptController } from './receipt.controller';
 import { ReceiptService } from './receipt.service';
 import { LineModule } from '../line/line.module';
 
 @Module({
     imports: [
-        MongooseModule.forFeature([{ name: Receipt.name, schema: ReceiptSchema }]),
+        TypeOrmModule.forFeature([Receipt, ReceiptItem]),
         forwardRef(() => LineModule),
     ],
     controllers: [ReceiptController],

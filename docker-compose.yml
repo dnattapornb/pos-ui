@@ -1,25 +1,39 @@
-version: '3.8'
+name: pos
 
 services:
-  mongo:
-    image: mongo:7.0.6
-    container_name: mongo-db
+  mysql:
+    image: mysql:8.0
+    container_name: mysql-db
     restart: always
     environment:
-      # กำหนด Username / Password ตรงนี้ได้เลยสำหรับใช้รันในเครื่อง
-      MONGO_INITDB_ROOT_USERNAME: admin
-      MONGO_INITDB_ROOT_PASSWORD: secretpassword
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: pos
     ports:
-      - "27018:27017"
+      - "4306:3306"
     volumes:
-      - mongo-data:/data/db
+      - mysql-data:/var/lib/mysql
     healthcheck:
-      test: echo 'db.runCommand("ping").ok' | mongosh --quiet
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost" ]
       interval: 10s
       timeout: 5s
       retries: 5
 
-# สังเกตว่า volumes ตรงนี้ต้องชิดซ้ายสุด ห้ามมีย่อหน้า
-volumes:  
-  mongo-data:    
+  redis:
+    image: redis:7.0-alpine
+    container_name: redis-cache
+    restart: always
+    ports:
+      - "7379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  mysql-data:
+    driver: local
+  redis-data:
     driver: local

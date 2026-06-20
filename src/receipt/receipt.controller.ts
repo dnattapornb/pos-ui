@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Logger, Param, Put, Inject, forwardRef } from '@nestjs/common';
 import { ReceiptService } from './receipt.service';
 import { ReceiptData } from '../ocr/receipt.interface';
-import { ReceiptDocument } from './receipt.schema';
+import { Receipt } from './receipt.entity';
 import { LineService } from '../line/line.service';
 
 @Controller('api/receipts')
@@ -15,7 +15,7 @@ export class ReceiptController {
     ) { }
 
     @Get(':id')
-    async getReceipt(@Param('id') id: string): Promise<ReceiptDocument> {
+    async getReceipt(@Param('id') id: string): Promise<Receipt> {
         this.logger.log(`[GET /api/receipts/${id}] request received`);
         try {
             const doc = await this.receiptService.getReceiptById(id);
@@ -31,7 +31,7 @@ export class ReceiptController {
     async updateReceipt(
         @Param('id') id: string,
         @Body() body: Partial<ReceiptData>,
-    ): Promise<ReceiptDocument> {
+    ): Promise<Receipt> {
         this.logger.log(`[PUT /api/receipts/${id}] body keys: ${Object.keys(body).join(', ')}`);
         try {
             const doc = await this.receiptService.updateReceipt(id, body);

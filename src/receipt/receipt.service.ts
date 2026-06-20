@@ -1,8 +1,8 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
-import { v4 as uuidv4 } from 'uuid';
-import { Receipt, ReceiptDocument } from './receipt.schema';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Receipt, ReceiptStatus } from './receipt.entity';
+import { ReceiptItem } from './receipt-item.entity';
 import { ReceiptData } from '../ocr/receipt.interface';
 
 @Injectable()
@@ -10,64 +10,74 @@ export class ReceiptService {
     private readonly logger = new Logger(ReceiptService.name);
 
     constructor(
-        @InjectModel(Receipt.name)
-        private readonly receiptModel: Model<ReceiptDocument>,
+        @InjectRepository(Receipt)
+        private readonly receiptRepository: Repository<Receipt>,
+        @InjectRepository(ReceiptItem)
+        private readonly receiptItemRepository: Repository<ReceiptItem>,
     ) { }
 
-    async createReceipt(userId: string, data: ReceiptData): Promise<ReceiptDocument> {
-        const receiptId = `rcpt_${uuidv4().replace(/-/g, '').substring(0, 12)}`;
-        const created = new this.receiptModel({
-            receiptId,
+    async createReceipt(userId: string, data: ReceiptData): Promise<Receipt> {
+        const receipt = this.receiptRepository.create({
             userId,
             storeName: data.storeName,
             date: data.date,
             totalAmount: data.totalAmount,
-            items: data.items,
-            status: 'pending',
+            status: ReceiptStatus.PENDING,
+            items: data.items.map(item => this.receiptItemRepository.create({
+                name: item.name,
+                quantity: item.quantity,
+                price: item.price,
+            })),
         });
-        const saved = await created.save();
-        this.logger.log(`Receipt created in DB: ${receiptId} for userId: ${userId}`);
+
+        const saved = await this.receiptRepository.save(receipt);
+        this.logger.log(`Receipt created in DB: ${saved.id} for userId: ${userId}`);
         return saved;
     }
 
-    async getReceiptById(receiptId: string): Promise<ReceiptDocument> {
-        const doc = await this.receiptModel.findOne({ receiptId }).exec();
+    async getReceiptById(id: string): Promise<Receipt> {
+        const doc = await this.receiptRepository.findOne({ where: { id } });
         if (!doc) {
-            throw new NotFoundException(`Receipt with id "${receiptId}" not found`);
+            throw new NotFoundException(`Receipt with id "${id}" not found`);
         }
         return doc;
     }
 
-    async updateReceipt(receiptId: string, updateData: Partial<ReceiptData>): Promise<ReceiptDocument> {
-        const doc = await this.receiptModel
-            .findOneAndUpdate({ receiptId }, { $set: updateData }, { returnDocument: 'after' })
-            .exec();
-        if (!doc) {
-            throw new NotFoundException(`Receipt with id "${receiptId}" not found`);
+    async updateReceipt(id: string, updateData: Partial<ReceiptData>): Promise<Receipt> {
+        const doc = await this.getReceiptById(id);
+        
+        if (updateData.storeName !== undefined) doc.storeName = updateData.storeName;
+        if (updateData.date !== undefined) doc.date = updateData.date;
+        if (updateData.totalAmount !== undefined) doc.totalAmount = updateData.totalAmount;
+        
+        if (updateData.items) {
+            // Overwrite items
+            await this.receiptItemRepository.delete({ receipt: { id } });
+            doc.items = updateData.items.map(item => this.receiptItemRepository.create({
+                name: item.name,
+                quantity: item.quantity,
+                price: item.price,
+            }));
         }
-        this.logger.log(`Receipt updated: ${receiptId}`);
-        return doc;
+
+        const saved = await this.receiptRepository.save(doc);
+        this.logger.log(`Receipt updated: ${id}`);
+        return saved;
     }
 
-    async approveReceipt(receiptId: string): Promise<ReceiptDocument> {
-        const result = await this.receiptModel
-            .findOneAndUpdate({ receiptId }, { $set: { status: 'approved' } }, { returnDocument: 'after' })
-            .exec();
-        if (!result) {
-            throw new NotFoundException(`Receipt with id "${receiptId}" not found`);
-        }
-        this.logger.log(`Receipt approved: ${receiptId}`);
-        return result;
+    async approveReceipt(id: string): Promise<Receipt> {
+        const doc = await this.getReceiptById(id);
+        doc.status = ReceiptStatus.APPROVED;
+        const saved = await this.receiptRepository.save(doc);
+        this.logger.log(`Receipt approved: ${id}`);
+        return saved;
     }
 
-    async cancelReceipt(receiptId: string): Promise<ReceiptDocument> {
-        const result = await this.receiptModel
-            .findOneAndUpdate({ receiptId }, { $set: { status: 'cancelled' } }, { returnDocument: 'after' })
-            .exec();
-        if (!result) {
-            throw new NotFoundException(`Receipt with id "${receiptId}" not found`);
-        }
-        this.logger.log(`Receipt cancelled: ${receiptId}`);
-        return result;
+    async cancelReceipt(id: string): Promise<Receipt> {
+        const doc = await this.getReceiptById(id);
+        doc.status = ReceiptStatus.CANCELLED;
+        const saved = await this.receiptRepository.save(doc);
+        this.logger.log(`Receipt cancelled: ${id}`);
+        return saved;
     }
 }
