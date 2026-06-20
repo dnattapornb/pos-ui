@@ -22,6 +22,8 @@
 Do not guess. Read the specific file when doing related work:
 
 - **Architecture & API Design:** `.agents/specs/design.md`
+- **Database Schema (tables/columns/relations):** `.agents/specs/database.md`
+- **POS REST API (Product & Inventory endpoints, curl/test):** `.agents/references/pos-api.md`
 - **Naming Conventions:** `.agents/references/naming-conventions.md`
 - **Git Commit Rules:** `.agents/skills/git-conventional-commit-message/SKILL.md`
 - **Frontend Integration:** `../liff-receipt-frontend/MASTER_AGENT_PROMPT.md`
