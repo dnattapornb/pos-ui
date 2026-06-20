@@ -14,6 +14,19 @@ import {
 } from 'class-validator';
 import { UnitName } from '../enums/unit.enum';
 
+export class CreateCategoryDto {
+  @IsString()
+  @IsNotEmpty()
+  name: string;
+}
+
+export class UpdateCategoryDto {
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  name?: string;
+}
+
 export class CreateProductUnitDto {
   @IsString()
   @IsNotEmpty()
@@ -87,6 +100,11 @@ export class CreateProductDto {
   @Min(0)
   costPrice: number;
 
+  @IsOptional()
+  @IsNumber()
+  @IsPositive()
+  categoryId?: number;
+
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })
@@ -113,6 +131,11 @@ export class UpdateProductDto {
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   costPrice?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @IsPositive()
+  categoryId?: number;
 
   @IsOptional()
   @IsArray()

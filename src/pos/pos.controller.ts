@@ -16,11 +16,41 @@ import {
   UpdateProductDto,
   AddProductUnitDto,
   UpdateProductUnitDto,
+  CreateCategoryDto,
+  UpdateCategoryDto,
 } from './dto/pos.dto';
 
 @Controller('pos')
 export class PosController {
   constructor(private readonly posService: PosService) {}
+
+  @Get('categories')
+  async getAllCategories() {
+    return this.posService.getAllCategories();
+  }
+
+  @Get('category/:id')
+  async getCategoryById(@Param('id', ParseIntPipe) id: number) {
+    return this.posService.getCategoryById(id);
+  }
+
+  @Post('category')
+  async createCategory(@Body() dto: CreateCategoryDto) {
+    return this.posService.createCategory(dto);
+  }
+
+  @Put('category/:id')
+  async updateCategory(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateCategoryDto,
+  ) {
+    return this.posService.updateCategory(id, dto);
+  }
+
+  @Delete('category/:id')
+  async deleteCategory(@Param('id', ParseIntPipe) id: number) {
+    return this.posService.deleteCategory(id);
+  }
 
   @Get('products')
   async getAllProducts() {

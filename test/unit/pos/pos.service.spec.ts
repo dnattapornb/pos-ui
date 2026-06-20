@@ -4,6 +4,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { Product } from '../../../src/pos/entities/product.entity';
 import { ProductUnit } from '../../../src/pos/entities/product-unit.entity';
 import { Inventory } from '../../../src/pos/entities/inventory.entity';
+import { Category } from '../../../src/pos/entities/category.entity';
 import { DataSource } from 'typeorm';
 import { UnitName } from '../../../src/pos/enums/unit.enum';
 
@@ -26,6 +27,7 @@ describe('PosService', () => {
 
   let unitRepo: { create: jest.Mock; findOne: jest.Mock; save: jest.Mock };
   let productRepo: { findOne: jest.Mock };
+  let categoryRepo: { find: jest.Mock; findOne: jest.Mock; create: jest.Mock; save: jest.Mock; remove: jest.Mock };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -61,6 +63,16 @@ describe('PosService', () => {
           },
         },
         {
+          provide: getRepositoryToken(Category),
+          useValue: {
+            find: jest.fn().mockResolvedValue([]),
+            findOne: jest.fn(),
+            create: jest.fn().mockImplementation((dto: Partial<Category>) => dto),
+            save: jest.fn(),
+            remove: jest.fn(),
+          },
+        },
+        {
           provide: DataSource,
           useValue: {
             createQueryRunner: jest.fn().mockReturnValue(mockQueryRunner),
@@ -72,6 +84,7 @@ describe('PosService', () => {
     service = module.get<PosService>(PosService);
     unitRepo = module.get(getRepositoryToken(ProductUnit));
     productRepo = module.get(getRepositoryToken(Product));
+    categoryRepo = module.get(getRepositoryToken(Category));
   });
 
   afterEach(() => {
@@ -315,6 +328,55 @@ describe('PosService', () => {
         'Product unit not found',
       );
       expect(unitRepo.save).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Category', () => {
+    it('getAllCategories should return array', async () => {
+      categoryRepo.find.mockResolvedValueOnce([{ id: 1, name: 'Cat' }]);
+      const res = await service.getAllCategories();
+      expect(categoryRepo.find).toHaveBeenCalled();
+      expect(res).toEqual([{ id: 1, name: 'Cat' }]);
+    });
+
+    it('getCategoryById should return category if found', async () => {
+      categoryRepo.findOne.mockResolvedValueOnce({ id: 1, name: 'Cat' });
+      const res = await service.getCategoryById(1);
+      expect(categoryRepo.findOne).toHaveBeenCalledWith({ where: { id: 1 } });
+      expect(res).toEqual({ id: 1, name: 'Cat' });
+    });
+
+    it('getCategoryById should throw if not found', async () => {
+      categoryRepo.findOne.mockResolvedValueOnce(null);
+      await expect(service.getCategoryById(99)).rejects.toThrow('Category not found');
+    });
+
+    it('createCategory should create and return category', async () => {
+      categoryRepo.create.mockReturnValue({ name: 'Cat' });
+      categoryRepo.save.mockImplementation(async (c) => { c.id = 1; return c; });
+      const res = await service.createCategory({ name: 'Cat' });
+      expect(res).toEqual({ id: 1, name: 'Cat' });
+    });
+
+    it('updateCategory should update and return category', async () => {
+      categoryRepo.findOne.mockResolvedValueOnce({ id: 1, name: 'Old' });
+      const res = await service.updateCategory(1, { name: 'New' });
+      expect(categoryRepo.save).toHaveBeenCalledWith({ id: 1, name: 'New' });
+      expect(res).toEqual({ id: 1, name: 'New' });
+    });
+
+    it('deleteCategory should remove category if no products', async () => {
+      const category = { id: 1, name: 'Cat', products: [] };
+      categoryRepo.findOne.mockResolvedValueOnce(category);
+      const res = await service.deleteCategory(1);
+      expect(categoryRepo.remove).toHaveBeenCalledWith(category);
+      expect(res).toEqual({ message: 'Category 1 has been deleted' });
+    });
+
+    it('deleteCategory should throw if category has products', async () => {
+      const category = { id: 1, name: 'Cat', products: [{ id: 10 }] };
+      categoryRepo.findOne.mockResolvedValueOnce(category);
+      await expect(service.deleteCategory(1)).rejects.toThrow('Cannot delete category with products');
     });
   });
 });

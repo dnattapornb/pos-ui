@@ -45,11 +45,11 @@ export class Product {
   inventory: Inventory;
 
   @Column({ name: 'category_id', nullable: true })
-  categoryId: number;
+  categoryId: number | null;
 
   @ManyToOne(() => Category, (category) => category.products)
   @JoinColumn({ name: 'category_id' })
-  category: Category;
+  category: Category | null;
 
   @Column({ default: true })
   published: boolean;

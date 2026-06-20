@@ -29,6 +29,11 @@ describe('PosController', () => {
       seedProducts: jest.fn().mockResolvedValue({ message: 'Seeded' }),
       receiveGoods: jest.fn().mockResolvedValue({ message: 'Received' }),
       checkout: jest.fn().mockResolvedValue({ message: 'Checkout' }),
+      getAllCategories: jest.fn().mockResolvedValue([]),
+      getCategoryById: jest.fn().mockResolvedValue({ id: 1, name: 'Cat' }),
+      createCategory: jest.fn().mockResolvedValue({ id: 1, name: 'Cat' }),
+      updateCategory: jest.fn().mockResolvedValue({ id: 1, name: 'Updated' }),
+      deleteCategory: jest.fn().mockResolvedValue({ message: 'Deleted' }),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -145,5 +150,37 @@ describe('PosController', () => {
     const res = await controller.checkout(dto);
     expect(service.checkout).toHaveBeenCalledWith(dto);
     expect(res).toEqual({ message: 'Checkout' });
+  });
+
+  it('should call getAllCategories', async () => {
+    const res = await controller.getAllCategories();
+    expect(service.getAllCategories).toHaveBeenCalled();
+    expect(res).toEqual([]);
+  });
+
+  it('should call getCategoryById', async () => {
+    const res = await controller.getCategoryById(1);
+    expect(service.getCategoryById).toHaveBeenCalledWith(1);
+    expect(res).toEqual({ id: 1, name: 'Cat' });
+  });
+
+  it('should call createCategory', async () => {
+    const dto = { name: 'Cat' };
+    const res = await controller.createCategory(dto);
+    expect(service.createCategory).toHaveBeenCalledWith(dto);
+    expect(res).toEqual({ id: 1, name: 'Cat' });
+  });
+
+  it('should call updateCategory', async () => {
+    const dto = { name: 'Updated' };
+    const res = await controller.updateCategory(1, dto);
+    expect(service.updateCategory).toHaveBeenCalledWith(1, dto);
+    expect(res).toEqual({ id: 1, name: 'Updated' });
+  });
+
+  it('should call deleteCategory', async () => {
+    const res = await controller.deleteCategory(1);
+    expect(service.deleteCategory).toHaveBeenCalledWith(1);
+    expect(res).toEqual({ message: 'Deleted' });
   });
 });

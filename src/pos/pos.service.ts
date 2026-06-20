@@ -4,6 +4,7 @@ import { Repository, DataSource } from 'typeorm';
 import { Product } from './entities/product.entity';
 import { ProductUnit } from './entities/product-unit.entity';
 import { Inventory } from './entities/inventory.entity';
+import { Category } from './entities/category.entity';
 import {
   InventoryTransaction,
   TransactionType,
@@ -15,6 +16,8 @@ import {
   UpdateProductDto,
   AddProductUnitDto,
   UpdateProductUnitDto,
+  CreateCategoryDto,
+  UpdateCategoryDto,
 } from './dto/pos.dto';
 import { v4 as uuidv4 } from 'uuid';
 import { UnitName } from './enums/unit.enum';
@@ -30,8 +33,65 @@ export class PosService {
     private readonly unitRepo: Repository<ProductUnit>,
     @InjectRepository(Inventory)
     private readonly inventoryRepo: Repository<Inventory>,
+    @InjectRepository(Category)
+    private readonly categoryRepo: Repository<Category>,
     private readonly dataSource: DataSource,
   ) {}
+
+  async getAllCategories() {
+    return this.categoryRepo.find();
+  }
+
+  async getCategoryById(id: number) {
+    const category = await this.categoryRepo.findOne({ where: { id } });
+    if (!category) {
+      throw new BadRequestException('Category not found');
+    }
+    return category;
+  }
+
+  async createCategory(dto: CreateCategoryDto) {
+    try {
+      const category = this.categoryRepo.create({ name: dto.name });
+      await this.categoryRepo.save(category);
+      this.logger.log(`Created category ${category.id}`);
+      return category;
+    } catch (err) {
+      this.logger.error(`Create category failed: ${err}`);
+      throw new BadRequestException('Failed to create category (name might already exist)');
+    }
+  }
+
+  async updateCategory(id: number, dto: UpdateCategoryDto) {
+    const category = await this.getCategoryById(id);
+    if (dto.name) {
+      category.name = dto.name;
+    }
+    try {
+      await this.categoryRepo.save(category);
+      this.logger.log(`Updated category ${id}`);
+      return category;
+    } catch (err) {
+      this.logger.error(`Update category failed: ${err}`);
+      throw new BadRequestException('Failed to update category');
+    }
+  }
+
+  async deleteCategory(id: number) {
+    const category = await this.categoryRepo.findOne({ 
+      where: { id },
+      relations: { products: true }
+    });
+    if (!category) {
+      throw new BadRequestException('Category not found');
+    }
+    if (category.products && category.products.length > 0) {
+      throw new BadRequestException('Cannot delete category with products');
+    }
+    await this.categoryRepo.remove(category);
+    this.logger.log(`Deleted category ${id}`);
+    return { message: `Category ${id} has been deleted` };
+  }
 
   async getAllProducts() {
     return this.productRepo.find({
@@ -43,7 +103,7 @@ export class PosService {
   async getProductById(id: number) {
     const product = await this.productRepo.findOne({
       where: { id, published: true },
-      relations: { units: true, inventory: true },
+      relations: { units: true, inventory: true, category: true },
     });
     if (!product) {
       throw new BadRequestException('Product not found');
@@ -58,11 +118,22 @@ export class PosService {
 
     try {
       // 1. Create Product
+      let category = null;
+      if (dto.categoryId) {
+        category = await queryRunner.manager.findOne(Category, {
+          where: { id: dto.categoryId },
+        });
+        if (!category) {
+          throw new BadRequestException('Category not found');
+        }
+      }
+
       const product = this.productRepo.create({
         sku: dto.sku,
         name: dto.name,
         baseUnitName: dto.baseUnitName,
         costPrice: dto.costPrice,
+        category: category,
       });
       await queryRunner.manager.save(product);
 
@@ -121,6 +192,17 @@ export class PosService {
       if (dto.baseUnitName) product.baseUnitName = dto.baseUnitName;
       if (dto.costPrice !== undefined) product.costPrice = dto.costPrice;
       if (dto.published !== undefined) product.published = dto.published;
+      if (dto.categoryId !== undefined) {
+        if (dto.categoryId === null) {
+          product.category = null;
+        } else {
+          const category = await queryRunner.manager.findOne(Category, {
+            where: { id: dto.categoryId },
+          });
+          if (!category) throw new BadRequestException('Category not found');
+          product.category = category;
+        }
+      }
 
       await queryRunner.manager.save(product);
 
