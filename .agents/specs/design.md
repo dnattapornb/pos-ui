@@ -1,6 +1,7 @@
 # Architecture & Design Guidelines (API)
 
 > **Last updated:** 2026-06-21 — synced from actual source code (`src/`, `http/pos.http`)
+> **Redis Barcode Cache design:** added 2026-06-21 (R3 phase)
 
 ---
 
@@ -8,6 +9,7 @@
 
 - **Framework:** NestJS 11 (Modular Architecture), TypeScript Strict
 - **Database:** MySQL 8 via TypeORM (`synchronize: true` in dev), timezone `+07:00`
+- **Cache:** Redis via `ioredis` — Cache key: `pos:barcode:{barcode}`, TTL 24h
 - **Modules:**
   - `LineModule` — Webhook receiver, event routing, Flex Message builder
   - `OcrModule` — Google Cloud Vision API + Gemini 2.0 Flash integration
@@ -15,6 +17,7 @@
   - `AuthModule` — Stub LINE OAuth endpoint (`POST /api/auth/line`)
   - `PosModule` — Full POS: Products, Categories, Units, Inventory, Orders, Suppliers, Purchase Orders
   - `UsersModule` — User management (ADMIN / CASHIER roles, bcrypt passwords)
+  - `RedisModule` — Global module, wraps `ioredis`, provides `RedisService` (get/set/del/delPattern + Logger)
 
 ---
 
@@ -86,14 +89,50 @@ published?: boolean  (true = republish, false = unpublish)
 
 > **Upsert logic (PUT units):** matched by `barcode`. If barcode exists → update + set `published=true`. If not → create new unit. Units **not** in payload are left untouched.
 
-### 4.3 Product Units (single unit CRUD)
+> **Cache invalidation:** `updateProduct` and `deleteProduct` will del `pos:barcode:{barcode}` for every unit belonging to that product immediately after the DB commit.
+
+### 4.3 Barcode Lookup (Redis Cache-Aside + Hybrid Stock)
+
+| Method | Path | Body | Description |
+|--------|------|------|-------------|
+| GET | `/pos/barcode/:barcode` | — | Lookup product + unit by barcode; product/unit info from Redis cache, `qtyInBaseUnit` always live from MySQL |
+
+**Response `BarcodeLookupResponseDto`:**
+```
+barcode:        string   ← lookup key
+unitId:         number   ← FK to product_unit
+unitName:       UnitName
+multiplier:     number   ← base units per this unit
+retailPrice:    number   ← used for POS checkout pricing
+wholesalePrice: number
+productId:      number
+productName:    string
+sku:            string
+baseUnitName:   UnitName
+costPrice:      number
+qtyInBaseUnit:  number   ← ALWAYS fetched live from inventory table (not cached)
+```
+
+**Hybrid Lookup Flow:**
+```
+1. Redis GET pos:barcode:{barcode}
+   ├─ HIT  → parse product/unit JSON (~2ms)
+   └─ MISS → MySQL: product_unit JOIN product (~35ms)
+              └─ Redis SET (TTL 86400s)
+2. MySQL: SELECT qty_in_base_unit FROM inventory WHERE product_id = ? (~5ms)
+3. Merge → return BarcodeLookupResponseDto
+```
+
+**Errors:** `400 Bad Request` if barcode not found in DB
+
+### 4.4 Product Units (single unit CRUD)
 
 | Method | Path | Body | Description |
 |--------|------|------|-------------|
 | GET | `/pos/product/unit/:id` | — | Get published unit by id (with product relation) |
 | POST | `/pos/product/unit` | `AddProductUnitDto` | Create a standalone unit for an existing product |
-| PUT | `/pos/product/unit/:id` | `UpdateProductUnitDto` | Partial update (barcode, unitName, multiplier, prices, published) |
-| DELETE | `/pos/product/unit/:id` | — | Soft delete: sets `published=false` |
+| PUT | `/pos/product/unit/:id` | `UpdateProductUnitDto` | Partial update (barcode, unitName, multiplier, prices, published) — **invalidates `pos:barcode:{barcode}` immediately** |
+| DELETE | `/pos/product/unit/:id` | — | Soft delete: sets `published=false` — **invalidates `pos:barcode:{barcode}` immediately** |
 
 **`AddProductUnitDto`:**
 ```
@@ -409,6 +448,9 @@ Stock OUT (checkout):
 | `GOOGLE_APPLICATION_CREDENTIALS` | Yes | — | Path to GCP service account JSON |
 | `GEMINI_API_KEY` | Yes* | — | Gemini API key (*graceful boot without it; throws per-request) |
 | `LIFF_EDIT_URL` | Yes | — | LIFF URL for edit button in Flex Message |
+| `REDIS_HOST` | No | `localhost` | Redis server host |
+| `REDIS_PORT` | No | `6379` | Redis server port |
+| `REDIS_PASSWORD` | No | — | Redis password (empty = no auth) |
 
 ---
 
@@ -422,3 +464,48 @@ Both `product` and `product_unit` use a `published` boolean flag for soft delete
 - `PUT /pos/product/:id` with `published: true/false` → explicit republish or unpublish
 
 > ⚠️ `updateProduct` and `getProductById` are intentionally separate queries — `updateProduct` returns the product regardless of `published` status (using `productRepo.findOne` directly), while `getProductById` enforces `published = true`.
+
+---
+
+## 13. Redis Cache Strategy (Barcode Lookup)
+
+### Pattern: Cache-Aside (Lazy Loading) + Hybrid Stock
+
+| Field group | Source | TTL |
+|-------------|--------|-----|
+| product + unit info | Redis `pos:barcode:{barcode}` | 86400s (24h) |
+| `qtyInBaseUnit` | MySQL `inventory` (live) | — (never cached) |
+
+### Cache Key Format
+```
+pos:barcode:{barcode}   →  JSON string (BarcodeLookupResponseDto minus qtyInBaseUnit)
+```
+
+### Cache Invalidation Rules
+
+| Service Method | Invalidates |
+|----------------|-------------|
+| `updateProduct(id)` | `pos:barcode:{b}` for all units of the product |
+| `deleteProduct(id)` | `pos:barcode:{b}` for all units of the product |
+| `updateProductUnit(id)` | `pos:barcode:{unit.barcode}` (single key) |
+| `deleteProductUnit(id)` | `pos:barcode:{unit.barcode}` (single key) |
+| `createProductUnit(dto)` | ❌ not needed (key never existed in cache) |
+
+### RedisService API
+```typescript
+get(key: string): Promise<string | null>
+set(key: string, value: string, ttlSeconds: number): Promise<void>
+del(key: string): Promise<void>
+delPattern(pattern: string): Promise<void>  // SCAN + DEL, avoid KEYS in production
+```
+
+### Performance Benchmark (from logs)
+| Scenario | Latency |
+|----------|---------|
+| Full MySQL query (CACHE MISS) | ~35ms |
+| Redis + live inventory (CACHE HIT) | ~7ms |
+| Full miss + inventory | ~40ms (first scan only) |
+
+### Graceful Degradation
+- ถ้า Redis ไม่พร้อม (connection error) → service fallback ไปยัง MySQL โดยตรง (ไม่ throw 500)
+- Boot ได้ปกติแม้ไม่มี Redis config (default `localhost:6379`)

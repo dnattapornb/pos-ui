@@ -27,8 +27,12 @@ import {
   CreateSupplierDto,
   UpdateSupplierDto,
   CreatePurchaseOrderDto,
+  BarcodeLookupResponseDto,
 } from './dto/pos.dto';
 import { UnitName } from './enums/unit.enum';
+import { RedisService } from '../redis/redis.service';
+
+type CachedBarcodeInfo = Omit<BarcodeLookupResponseDto, 'qtyInBaseUnit'>;
 
 @Injectable()
 export class PosService {
@@ -50,6 +54,7 @@ export class PosService {
     @InjectRepository(Order)
     private readonly orderRepo: Repository<Order>,
     private readonly dataSource: DataSource,
+    private readonly redis: RedisService,
   ) {}
 
   async getAllCategories() {
@@ -204,6 +209,8 @@ export class PosService {
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
+    const barcodesToInvalidate = new Set<string>();
+
     try {
       const product = await queryRunner.manager.findOne(Product, {
         where: { id },
@@ -212,6 +219,11 @@ export class PosService {
 
       if (!product) {
         throw new BadRequestException('Product not found');
+      }
+
+      // Collect existing unit barcodes for cache invalidation
+      for (const unit of product.units ?? []) {
+        barcodesToInvalidate.add(unit.barcode);
       }
 
       // Update Product fields
@@ -241,6 +253,7 @@ export class PosService {
         );
 
         for (const unitDto of dto.units) {
+          barcodesToInvalidate.add(unitDto.barcode);
           const existing = existingByBarcode.get(unitDto.barcode);
           if (existing) {
             // Update in place — keep id / createdAt, re-publish if previously soft-deleted
@@ -276,6 +289,11 @@ export class PosService {
       await queryRunner.release();
     }
 
+    // Invalidate barcode cache for all affected units (after successful commit)
+    for (const barcode of barcodesToInvalidate) {
+      await this.redis.del(this.barcodeCacheKey(barcode));
+    }
+
     const updatedProduct = await this.productRepo.findOne({
       where: { id },
       relations: { units: true, inventory: true, category: true },
@@ -304,10 +322,73 @@ export class PosService {
         unit.published = false;
       }
       await this.unitRepo.save(product.units);
+
+      // Invalidate barcode cache for every unit of this product
+      for (const unit of product.units) {
+        await this.redis.del(this.barcodeCacheKey(unit.barcode));
+      }
     }
 
     this.logger.log(`Soft deleted product ${id}`);
     return { message: `Product ${id} has been deleted` };
+  }
+
+  private barcodeCacheKey(barcode: string): string {
+    return `pos:barcode:${barcode}`;
+  }
+
+  async lookupBarcode(barcode: string): Promise<BarcodeLookupResponseDto> {
+    const cacheKey = this.barcodeCacheKey(barcode);
+
+    // 1. Try cache for the (rarely-changing) product/unit info
+    let info: CachedBarcodeInfo | null = null;
+    const cached = await this.redis.get(cacheKey);
+    if (cached) {
+      try {
+        info = JSON.parse(cached) as CachedBarcodeInfo;
+      } catch (err) {
+        this.logger.warn(`Failed to parse cached barcode ${barcode}: ${err}`);
+        info = null;
+      }
+    }
+
+    // 2. Cache miss (or unparseable) -> query MySQL and backfill cache
+    if (!info) {
+      const unit = await this.unitRepo.findOne({
+        where: { barcode, published: true },
+        relations: { product: true },
+      });
+      if (!unit || !unit.product) {
+        throw new BadRequestException(`Barcode ${barcode} not found`);
+      }
+
+      info = {
+        barcode: unit.barcode,
+        unitId: unit.id,
+        unitName: unit.unitName,
+        multiplier: unit.multiplier,
+        retailPrice: Number(unit.retailPrice),
+        wholesalePrice: Number(unit.wholesalePrice),
+        productId: unit.product.id,
+        productName: unit.product.name,
+        sku: unit.product.sku,
+        baseUnitName: unit.product.baseUnitName,
+        costPrice: Number(unit.product.costPrice),
+      };
+
+      await this.redis.set(cacheKey, JSON.stringify(info), 86400);
+    }
+
+    // 3. Live stock query (never cached)
+    const inventory = await this.inventoryRepo.findOne({
+      where: { productId: info.productId },
+    });
+
+    // 4. Merge cached info + live stock
+    return {
+      ...info,
+      qtyInBaseUnit: inventory?.qtyInBaseUnit ?? 0,
+    };
   }
 
   async getProductUnitById(id: number) {
@@ -353,6 +434,8 @@ export class PosService {
       throw new BadRequestException('Product unit not found');
     }
 
+    const previousBarcode = unit.barcode;
+
     if (dto.barcode) unit.barcode = dto.barcode;
     if (dto.unitName) unit.unitName = dto.unitName;
     if (dto.multiplier !== undefined) unit.multiplier = dto.multiplier;
@@ -362,6 +445,13 @@ export class PosService {
     if (dto.published !== undefined) unit.published = dto.published;
 
     await this.unitRepo.save(unit);
+
+    // Invalidate cache for both the old and (possibly changed) new barcode
+    await this.redis.del(this.barcodeCacheKey(previousBarcode));
+    if (unit.barcode !== previousBarcode) {
+      await this.redis.del(this.barcodeCacheKey(unit.barcode));
+    }
+
     this.logger.log(`Updated product unit ${id}`);
     return unit;
   }
@@ -374,6 +464,8 @@ export class PosService {
 
     unit.published = false;
     await this.unitRepo.save(unit);
+
+    await this.redis.del(this.barcodeCacheKey(unit.barcode));
 
     this.logger.log(`Soft deleted product unit ${id}`);
     return { message: `Product unit ${id} has been deleted` };

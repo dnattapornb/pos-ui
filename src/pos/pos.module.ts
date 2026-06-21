@@ -11,6 +11,7 @@ import { Supplier } from './entities/supplier.entity';
 import { PurchaseOrder } from './entities/purchase-order.entity';
 import { Order } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
+import { RedisModule } from '../redis/redis.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { OrderItem } from './entities/order-item.entity';
       Order,
       OrderItem,
     ]),
+    RedisModule,
   ],
   controllers: [PosController],
   providers: [PosService],

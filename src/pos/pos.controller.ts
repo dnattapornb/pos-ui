@@ -59,6 +59,11 @@ export class PosController {
     return this.posService.getAllProducts();
   }
 
+  @Get('barcode/:barcode')
+  async lookupBarcode(@Param('barcode') barcode: string) {
+    return this.posService.lookupBarcode(barcode);
+  }
+
   @Get('product/unit/:id')
   async getProductUnitById(@Param('id', ParseIntPipe) id: number) {
     return this.posService.getProductUnitById(id);

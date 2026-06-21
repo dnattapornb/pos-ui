@@ -199,6 +199,21 @@ export class CreatePurchaseOrderDto {
   items: PurchaseOrderItemDto[];
 }
 
+export class BarcodeLookupResponseDto {
+  barcode: string;
+  unitId: number;
+  unitName: UnitName;
+  multiplier: number;
+  retailPrice: number;
+  wholesalePrice: number;
+  productId: number;
+  productName: string;
+  sku: string;
+  baseUnitName: UnitName;
+  costPrice: number;
+  qtyInBaseUnit: number;
+}
+
 export class CheckoutItemDto {
   @IsString()
   @IsNotEmpty()

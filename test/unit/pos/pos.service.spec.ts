@@ -11,6 +11,7 @@ import { Order } from '../../../src/pos/entities/order.entity';
 import { DataSource } from 'typeorm';
 import { UnitName } from '../../../src/pos/enums/unit.enum';
 import { PaymentMethod } from '../../../src/pos/enums/payment-method.enum';
+import { RedisService } from '../../../src/redis/redis.service';
 
 describe('PosService', () => {
   let service: PosService;
@@ -30,7 +31,7 @@ describe('PosService', () => {
   };
 
   let unitRepo: { create: jest.Mock; findOne: jest.Mock; save: jest.Mock };
-  let productRepo: { findOne: jest.Mock };
+  let productRepo: { findOne: jest.Mock; save: jest.Mock };
   let categoryRepo: {
     find: jest.Mock;
     findOne: jest.Mock;
@@ -46,6 +47,13 @@ describe('PosService', () => {
     remove: jest.Mock;
   };
   let orderRepo: { find: jest.Mock; findOne: jest.Mock };
+  let inventoryRepo: { create: jest.Mock; findOne: jest.Mock };
+  let redis: {
+    get: jest.Mock;
+    set: jest.Mock;
+    del: jest.Mock;
+    delPattern: jest.Mock;
+  };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -60,6 +68,7 @@ describe('PosService', () => {
               .fn()
               .mockImplementation((dto: Partial<Product>) => dto),
             findOne: jest.fn(),
+            save: jest.fn(),
           },
         },
         {
@@ -78,6 +87,7 @@ describe('PosService', () => {
             create: jest
               .fn()
               .mockImplementation((dto: Partial<Inventory>) => dto),
+            findOne: jest.fn(),
           },
         },
         {
@@ -126,6 +136,15 @@ describe('PosService', () => {
             createQueryRunner: jest.fn().mockReturnValue(mockQueryRunner),
           },
         },
+        {
+          provide: RedisService,
+          useValue: {
+            get: jest.fn().mockResolvedValue(null),
+            set: jest.fn().mockResolvedValue(undefined),
+            del: jest.fn().mockResolvedValue(undefined),
+            delPattern: jest.fn().mockResolvedValue(undefined),
+          },
+        },
       ],
     }).compile();
 
@@ -135,6 +154,8 @@ describe('PosService', () => {
     categoryRepo = module.get(getRepositoryToken(Category));
     supplierRepo = module.get(getRepositoryToken(Supplier));
     orderRepo = module.get(getRepositoryToken(Order));
+    inventoryRepo = module.get(getRepositoryToken(Inventory));
+    redis = module.get(RedisService);
   });
 
   afterEach(() => {
@@ -259,6 +280,215 @@ describe('PosService', () => {
       expect(mockQueryRunner.manager.delete).not.toHaveBeenCalled();
       // Only the product entity itself is saved
       expect(mockQueryRunner.manager.save).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('lookupBarcode', () => {
+    const cachedInfo = {
+      barcode: '8850001',
+      unitId: 10,
+      unitName: UnitName.BOTTLE,
+      multiplier: 1,
+      retailPrice: 15,
+      wholesalePrice: 14,
+      productId: 1,
+      productName: 'Coke',
+      sku: 'SKU-001',
+      baseUnitName: UnitName.BOTTLE,
+      costPrice: 12,
+    };
+
+    it('CACHE HIT: parses cache, queries live inventory, does NOT query MySQL product', async () => {
+      redis.get.mockResolvedValueOnce(JSON.stringify(cachedInfo));
+      inventoryRepo.findOne.mockResolvedValueOnce({
+        productId: 1,
+        qtyInBaseUnit: 48,
+      });
+
+      const res = await service.lookupBarcode('8850001');
+
+      expect(redis.get).toHaveBeenCalledWith('pos:barcode:8850001');
+      expect(unitRepo.findOne).not.toHaveBeenCalled();
+      expect(redis.set).not.toHaveBeenCalled();
+      expect(inventoryRepo.findOne).toHaveBeenCalledWith({
+        where: { productId: 1 },
+      });
+      expect(res).toEqual({ ...cachedInfo, qtyInBaseUnit: 48 });
+    });
+
+    it('CACHE MISS: queries MySQL, sets cache TTL 86400, queries live inventory', async () => {
+      redis.get.mockResolvedValueOnce(null);
+      const unit = {
+        id: 10,
+        barcode: '8850001',
+        unitName: UnitName.BOTTLE,
+        multiplier: 1,
+        retailPrice: 15,
+        wholesalePrice: 14,
+        product: {
+          id: 1,
+          name: 'Coke',
+          sku: 'SKU-001',
+          baseUnitName: UnitName.BOTTLE,
+          costPrice: 12,
+        },
+      };
+      unitRepo.findOne.mockResolvedValueOnce(unit);
+      inventoryRepo.findOne.mockResolvedValueOnce({
+        productId: 1,
+        qtyInBaseUnit: 48,
+      });
+
+      const res = await service.lookupBarcode('8850001');
+
+      expect(unitRepo.findOne).toHaveBeenCalledWith({
+        where: { barcode: '8850001', published: true },
+        relations: { product: true },
+      });
+      expect(redis.set).toHaveBeenCalledWith(
+        'pos:barcode:8850001',
+        JSON.stringify(cachedInfo),
+        86400,
+      );
+      expect(res).toEqual({ ...cachedInfo, qtyInBaseUnit: 48 });
+    });
+
+    it('CACHE MISS + barcode not found: throws 400', async () => {
+      redis.get.mockResolvedValueOnce(null);
+      unitRepo.findOne.mockResolvedValueOnce(null);
+
+      await expect(service.lookupBarcode('0000000')).rejects.toThrow(
+        'Barcode 0000000 not found',
+      );
+      expect(redis.set).not.toHaveBeenCalled();
+    });
+
+    it('Redis GET degraded (null): falls back to MySQL gracefully', async () => {
+      // RedisService.get returns null on error (graceful degradation)
+      redis.get.mockResolvedValueOnce(null);
+      const unit = {
+        id: 10,
+        barcode: '8850001',
+        unitName: UnitName.BOTTLE,
+        multiplier: 1,
+        retailPrice: 15,
+        wholesalePrice: 14,
+        product: {
+          id: 1,
+          name: 'Coke',
+          sku: 'SKU-001',
+          baseUnitName: UnitName.BOTTLE,
+          costPrice: 12,
+        },
+      };
+      unitRepo.findOne.mockResolvedValueOnce(unit);
+      inventoryRepo.findOne.mockResolvedValueOnce({
+        productId: 1,
+        qtyInBaseUnit: 0,
+      });
+
+      const res = await service.lookupBarcode('8850001');
+
+      expect(unitRepo.findOne).toHaveBeenCalled();
+      expect(res.qtyInBaseUnit).toBe(0);
+    });
+
+    it('defaults qtyInBaseUnit to 0 when no inventory row exists', async () => {
+      redis.get.mockResolvedValueOnce(JSON.stringify(cachedInfo));
+      inventoryRepo.findOne.mockResolvedValueOnce(null);
+
+      const res = await service.lookupBarcode('8850001');
+
+      expect(res.qtyInBaseUnit).toBe(0);
+    });
+  });
+
+  describe('barcode cache invalidation', () => {
+    it('updateProductUnit deletes the barcode cache key', async () => {
+      const unit = {
+        id: 10,
+        barcode: '8850001',
+        unitName: UnitName.BOTTLE,
+        multiplier: 1,
+        retailPrice: 15,
+        wholesalePrice: 14,
+        published: true,
+      };
+      unitRepo.findOne.mockResolvedValueOnce(unit);
+
+      await service.updateProductUnit(10, { retailPrice: 16 });
+
+      expect(redis.del).toHaveBeenCalledWith('pos:barcode:8850001');
+    });
+
+    it('updateProductUnit deletes both old and new barcode keys when barcode changes', async () => {
+      const unit = {
+        id: 10,
+        barcode: '8850001',
+        unitName: UnitName.BOTTLE,
+        multiplier: 1,
+        retailPrice: 15,
+        wholesalePrice: 14,
+        published: true,
+      };
+      unitRepo.findOne.mockResolvedValueOnce(unit);
+
+      await service.updateProductUnit(10, { barcode: '9990000' });
+
+      expect(redis.del).toHaveBeenCalledWith('pos:barcode:8850001');
+      expect(redis.del).toHaveBeenCalledWith('pos:barcode:9990000');
+    });
+
+    it('deleteProductUnit deletes the barcode cache key', async () => {
+      const unit = { id: 10, barcode: '8850001', published: true };
+      unitRepo.findOne.mockResolvedValueOnce(unit);
+
+      await service.deleteProductUnit(10);
+
+      expect(redis.del).toHaveBeenCalledWith('pos:barcode:8850001');
+    });
+
+    it('updateProduct deletes the cache key for every affected unit', async () => {
+      const product = {
+        id: 1,
+        units: [
+          { id: 10, barcode: '8850001' },
+          { id: 11, barcode: '8850002' },
+        ],
+      };
+      mockQueryRunner.manager.findOne.mockResolvedValueOnce(product);
+      productRepo.findOne.mockResolvedValueOnce({ id: 1 });
+
+      await service.updateProduct(1, {
+        units: [
+          {
+            barcode: '8850001',
+            unitName: UnitName.BOTTLE,
+            multiplier: 1,
+            retailPrice: 16,
+            wholesalePrice: 15,
+          },
+        ],
+      });
+
+      expect(redis.del).toHaveBeenCalledWith('pos:barcode:8850001');
+      expect(redis.del).toHaveBeenCalledWith('pos:barcode:8850002');
+    });
+
+    it('deleteProduct deletes the cache key for every unit', async () => {
+      const product = {
+        id: 1,
+        units: [
+          { id: 10, barcode: '8850001', published: true },
+          { id: 11, barcode: '8850002', published: true },
+        ],
+      };
+      productRepo.findOne.mockResolvedValueOnce(product);
+
+      await service.deleteProduct(1);
+
+      expect(redis.del).toHaveBeenCalledWith('pos:barcode:8850001');
+      expect(redis.del).toHaveBeenCalledWith('pos:barcode:8850002');
     });
   });
 

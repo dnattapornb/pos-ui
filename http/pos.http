@@ -106,6 +106,19 @@ Content-Type: {{contentType}}
 DELETE {{baseUrl}}/pos/product/1
 
 ###############################################################################
+# Barcode Lookup  (/pos/barcode/:barcode)  — Redis Cache-Aside + Hybrid Stock
+###############################################################################
+
+### CACHE MISS (first call) -> MySQL query -> set Redis TTL 24h
+GET {{baseUrl}}/pos/barcode/8850001
+
+### CACHE HIT (second call) -> Redis hit -> live inventory query only
+GET {{baseUrl}}/pos/barcode/8850001
+
+### Barcode not found -> 400
+GET {{baseUrl}}/pos/barcode/0000000
+
+###############################################################################
 # Product units (single unit CRUD — :id is product_unit.id)
 ###############################################################################
 

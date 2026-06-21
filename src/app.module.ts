@@ -9,6 +9,7 @@ import { ReceiptModule } from './receipt/receipt.module';
 import { AuthModule } from './auth/auth.module';
 import { PosModule } from './pos/pos.module';
 import { UsersModule } from './users/users.module';
+import { RedisModule } from './redis/redis.module';
 import { Receipt } from './receipt/receipt.entity';
 import { ReceiptItem } from './receipt/receipt-item.entity';
 import { Product } from './pos/entities/product.entity';
@@ -26,6 +27,7 @@ import { User } from './users/entities/user.entity';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    RedisModule,
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (cfg: ConfigService) => ({

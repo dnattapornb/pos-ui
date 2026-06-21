@@ -17,6 +17,7 @@ describe('PosController', () => {
     service = {
       getAllProducts: jest.fn().mockResolvedValue([]),
       getProductById: jest.fn().mockResolvedValue({ id: 1 }),
+      lookupBarcode: jest.fn().mockResolvedValue({ barcode: '8850001' }),
       createProduct: jest.fn().mockResolvedValue({ id: 1 }),
       updateProduct: jest.fn().mockResolvedValue({ id: 1 }),
       deleteProduct: jest.fn().mockResolvedValue({ message: 'Deleted' }),
@@ -72,6 +73,12 @@ describe('PosController', () => {
     const res = await controller.getProductById(1);
     expect(service.getProductById).toHaveBeenCalledWith(1);
     expect(res).toEqual({ id: 1 });
+  });
+
+  it('should call lookupBarcode', async () => {
+    const res = await controller.lookupBarcode('8850001');
+    expect(service.lookupBarcode).toHaveBeenCalledWith('8850001');
+    expect(res).toEqual({ barcode: '8850001' });
   });
 
   it('should call createProduct', async () => {
