@@ -132,6 +132,7 @@ export class PosService {
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
+    let productId: number;
     try {
       // 1. Create Product
       let category = null;
@@ -176,15 +177,26 @@ export class PosService {
       await queryRunner.manager.save(inventory);
 
       await queryRunner.commitTransaction();
+      productId = product.id;
       this.logger.log(`Created product ${product.id}`);
-      return await this.getProductById(product.id);
     } catch (err) {
-      await queryRunner.rollbackTransaction();
+      if (queryRunner.isTransactionActive) {
+        await queryRunner.rollbackTransaction();
+      }
       this.logger.error(`Create product failed: ${err}`);
       throw new BadRequestException('Failed to create product');
     } finally {
       await queryRunner.release();
     }
+
+    const createdProduct = await this.productRepo.findOne({
+      where: { id: productId },
+      relations: { units: true, inventory: true, category: true },
+    });
+    if (!createdProduct) {
+      throw new BadRequestException('Product not found after creation');
+    }
+    return createdProduct;
   }
 
   async updateProduct(id: number, dto: UpdateProductDto) {
@@ -254,14 +266,24 @@ export class PosService {
 
       await queryRunner.commitTransaction();
       this.logger.log(`Updated product ${product.id}`);
-      return await this.getProductById(product.id);
     } catch (err) {
-      await queryRunner.rollbackTransaction();
+      if (queryRunner.isTransactionActive) {
+        await queryRunner.rollbackTransaction();
+      }
       this.logger.error(`Update product failed: ${err}`);
       throw new BadRequestException('Failed to update product');
     } finally {
       await queryRunner.release();
     }
+
+    const updatedProduct = await this.productRepo.findOne({
+      where: { id },
+      relations: { units: true, inventory: true, category: true },
+    });
+    if (!updatedProduct) {
+      throw new BadRequestException('Product not found after update');
+    }
+    return updatedProduct;
   }
 
   async deleteProduct(id: number) {
