@@ -10,6 +10,7 @@
 - **Framework:** NestJS 11 (Modular Architecture), TypeScript Strict
 - **Database:** MySQL 8 via TypeORM (`synchronize: true` in dev), timezone `+07:00`
 - **Cache:** Redis via `ioredis` — Cache key: `pos:barcode:{barcode}`, TTL 24h
+- **AI/OCR:** Google Cloud Vision API for raw text, **Gemini 2.5 Flash** for JSON structuring.
 - **Modules:**
   - `LineModule` — Webhook receiver, event routing, Flex Message builder
   - `OcrModule` — Google Cloud Vision API + Gemini 2.0 Flash integration
